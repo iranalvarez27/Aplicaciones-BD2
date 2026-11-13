@@ -1,0 +1,11 @@
+fastapi>=0.115.0
+uvicorn>=0.30.0
+pydantic>=2.8.0
+httpx>=0.27
+# Detección de audio (reutiliza las bibliotecas del motor, ver ENGINE_HOME):
+numpy>=2.0
+librosa>=0.10
+soundfile>=0.12
+faiss-cpu>=1.8
+scipy
+opencv-python>=4.8
