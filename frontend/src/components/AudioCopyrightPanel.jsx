@@ -1,27 +1,30 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Disc3, History, LoaderCircle, Mic, RefreshCw, Search, SlidersHorizontal, Upload, X } from "lucide-react";
 import {
-  Download,
-  Inbox,
-  LoaderCircle,
-  Music,
-  Pause,
-  Play,
-  RefreshCw,
-  Search,
-  Settings2,
-  SlidersHorizontal,
-  Upload,
-  X,
-} from "lucide-react";
-import { uploadMediaApi } from "../utils/api";
-import "./ecommerce/shop.css";
+  detectarCopyright,
+  estadoLetras,
+  estadoRepertorio,
+  leerProgreso,
+  listarBibliotecas,
+  listarRepertorio,
+  prepararLetras,
+  prepararRepertorio,
+  subirAudio,
+} from "./audio/api";
+import { claveFragmento, coloresPorPista, EXTENSIONES, LIMITES, TAMANO_MAX, tiempo } from "./audio/formato";
+import { borrarAnalisis, guardarAnalisis, leerHistorial, vaciarHistorial } from "./audio/registroAnalisis";
+import Historial from "./audio/Historial";
+import { picosDeAudio } from "./audio/onda";
+import FuenteAudio from "./audio/FuenteAudio";
+import LogoEstudio from "./audio/LogoEstudio";
+import Grabadora from "./audio/Grabadora";
+import PanelResultados from "./audio/PanelResultados";
+import ParametrosCopyright from "./audio/ParametrosCopyright";
+import Repertorio from "./audio/Repertorio";
+import { useGrabacion } from "./audio/useGrabacion";
 import "./audio/audio.css";
 
-const tiempo = (s) =>
-  `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s)) % 60).padStart(2, "0")}`;
-const claveFragmento = (c) => `${c.track_id}:${c.inicio_s}:${c.fin_s}`;
-const colores = ["#235bd8", "#db65a2", "#29a387", "#daa640", "#6366dc"];
-const inicial = {
+const PARAMETROS_INICIALES = {
   segmento_s: 5,
   paso_s: 0.5,
   k: 100,
@@ -33,69 +36,76 @@ const inicial = {
   reducir_ruido: true,
 };
 
-function NumericField({ label, value, onChange, min, max, step = 1, ayuda }) {
-  return (
-    <label className="audio-field" title={ayuda}>
-      {label}
-      <input
-        type="number"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
-    </label>
-  );
-}
+const BARRAS_BANNER = Array.from({ length: 46 }, (_, i) => ({ alto: 24 + ((i * 37) % 58), retardo: (i * 0.13) % 1.9 }));
+
+const FUENTES = [
+  { clave: "subir", icono: Upload, texto: "Subir archivo" },
+  { clave: "grabar", icono: Mic, texto: "Grabar" },
+];
+
+const mensaje = (r) => (r.status === "rejected" && r.reason?.name !== "AbortError" ? r.reason.message : "");
 
 export default function AudioCopyrightPanel() {
+  const [fuente, setFuente] = useState("subir");
   const [colecciones, setColecciones] = useState([]);
+  const [repertorio, setRepertorio] = useState([]);
+  const [estadoRep, setEstadoRep] = useState(null);
+  const [letras, setLetras] = useState(null);
+  const [iniciandoLetras, setIniciandoLetras] = useState(false);
+  const [avisos, setAvisos] = useState({ bibliotecas: "", repertorio: "" });
+  const [cargando, setCargando] = useState(true);
+  const [iniciandoPrep, setIniciandoPrep] = useState(false);
   const [n, setN] = useState("");
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState("");
   const [duracion, setDuracion] = useState(null);
   const [subida, setSubida] = useState(null);
-  const [cargando, setCargando] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [resultado, setResultado] = useState(null);
-  const [estado, setEstado] = useState("");
+  const [, setEstado] = useState("");
   const [transcurrido, setTranscurrido] = useState(0);
-  const [params, setParams] = useState(inicial);
+  const [params, setParams] = useState(PARAMETROS_INICIALES);
   const [reproduciendo, setReproduciendo] = useState(null);
   const panel = useRef(null);
+  const [ventana, setVentana] = useState(null);
+  const [onda, setOnda] = useState(null);
+  const [fase, setFase] = useState("");
+  const [progreso, setProgreso] = useState({});
+  const progresoId = useRef("");
+  const [tiempoS, setTiempoS] = useState(0);
+  const [historial, setHistorial] = useState(leerHistorial);
+  const [desdeHistorial, setDesdeHistorial] = useState("");
+  const ondaToken = useRef(0);
+  const cabecera = useRef(null);
   const fragmento = useRef(null);
   const player = useRef(null);
-  const resultados = useRef(null);
-  const cambiar = (clave, valor) =>
-    setParams((p) => ({ ...p, [clave]: valor }));
+  const alToma = useRef(() => {});
+  const grabacion = useGrabacion({ onToma: (toma) => alToma.current(toma), onError: (m) => setError(m) });
+  const grabando = grabacion.grabando;
 
   const cargar = useCallback((signal) => {
-    return fetch("/api/audio/collections", { signal })
-      .then(async (res) => {
-        if (!res.ok)
-          throw new Error("No se pudo cargar la biblioteca de audio.");
-        const data = await res.json();
-        if (signal?.aborted) return;
+    return Promise.allSettled([
+      listarBibliotecas(signal).then((data) => {
         setColecciones(data.colecciones);
-        setN((prev) =>
-          String(
-            data.colecciones.find((c) => String(c.n) === prev)?.n ||
-              data.colecciones.find((c) => c.unificada)?.n ||
-              data.colecciones.find((c) => c.completa)?.n ||
-              data.colecciones[0]?.n ||
-              "",
-          ),
+        setN(
+          (prev) =>
+            String(
+              data.colecciones.find((c) => String(c.n) === prev)?.n ||
+                data.colecciones.find((c) => c.completa)?.n ||
+                data.colecciones[0]?.n ||
+                "",
+            ),
         );
-        setError("");
-      })
-      .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
-      })
-      .finally(() => {
-        if (!signal?.aborted) setCargando(false);
-      });
+      }),
+      listarRepertorio(signal).then((data) => setRepertorio(data.canciones || [])),
+      estadoRepertorio(signal).then(setEstadoRep),
+      estadoLetras(signal).then(setLetras),
+    ]).then(([bibliotecas, canciones, estadoServidor]) => {
+      if (signal?.aborted) return;
+      setAvisos({ bibliotecas: mensaje(bibliotecas), repertorio: mensaje(canciones) || mensaje(estadoServidor) });
+      setCargando(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -103,93 +113,180 @@ export default function AudioCopyrightPanel() {
     cargar(c.signal);
     return () => c.abort();
   }, [cargar]);
+
+  const preparandoRep = !!estadoRep?.preparacion?.activa;
+  const preparandoLetras = !!letras?.preparacion?.activa;
+  useEffect(() => {
+    if (!preparandoRep && !preparandoLetras) return;
+    const c = new AbortController();
+    const timer = setInterval(() => {
+      Promise.all([estadoRepertorio(c.signal), listarRepertorio(c.signal), estadoLetras(c.signal)])
+        .then(([e, data, l]) => {
+          setEstadoRep(e);
+          setRepertorio(data.canciones || []);
+          setLetras(l);
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => {
+      clearInterval(timer);
+      c.abort();
+    };
+  }, [preparandoRep, preparandoLetras]);
+
+  useEffect(() => {
+    if (!ventana) return;
+    const alTeclear = (e) => e.key === "Escape" && setVentana(null);
+    const alPulsar = (e) => cabecera.current && !cabecera.current.contains(e.target) && setVentana(null);
+    document.addEventListener("keydown", alTeclear);
+    document.addEventListener("mousedown", alPulsar);
+    return () => {
+      document.removeEventListener("keydown", alTeclear);
+      document.removeEventListener("mousedown", alPulsar);
+    };
+  }, [ventana]);
   useEffect(() => {
     if (preview) return () => URL.revokeObjectURL(preview);
   }, [preview]);
   useEffect(() => {
     if (!busy) return;
     const inicio = Date.now();
-    const timer = setInterval(
-      () => setTranscurrido(Math.floor((Date.now() - inicio) / 1000)),
-      1000,
-    );
+    const timer = setInterval(() => setTranscurrido(Math.floor((Date.now() - inicio) / 1000)), 1000);
     return () => clearInterval(timer);
   }, [busy]);
-  useEffect(() => {
-    if (resultados.current) resultados.current.scrollTop = 0;
-  }, [resultado, busy]);
 
-  const seleccionar = (archivo) => {
+  useEffect(() => {
+    if (fase !== "analizando") return;
+    const c = new AbortController();
+    const timer = setInterval(() => {
+      leerProgreso(progresoId.current, c.signal)
+        .then(setProgreso)
+        .catch(() => {});
+    }, 700);
+    return () => {
+      clearInterval(timer);
+      c.abort();
+    };
+  }, [fase]);
+
+  const limpiarResultado = () => {
     player.current?.pause();
     fragmento.current = null;
     setReproduciendo(null);
     setResultado(null);
     setEstado("");
+    setDesdeHistorial("");
+  };
+
+  const seleccionar = (archivo) => {
+    limpiarResultado();
     setSubida(null);
     setDuracion(null);
     setError("");
     setPreview("");
-    if (archivo && !/\.(mp3|wav|ogg|flac|m4a)$/i.test(archivo.name)) {
+    setOnda(null);
+    setTiempoS(0);
+    if (archivo && !EXTENSIONES.test(archivo.name)) {
       setFile(null);
       setError("Selecciona un audio MP3, WAV, OGG, FLAC o M4A.");
       return;
     }
-    if (archivo && archivo.size > 50 * 1024 * 1024) {
+    if (archivo && archivo.size > TAMANO_MAX) {
       setFile(null);
       setError("El archivo debe pesar como máximo 50 MB.");
       return;
     }
     setFile(archivo);
-    if (archivo) setPreview(URL.createObjectURL(archivo));
+    if (archivo) {
+      setPreview(URL.createObjectURL(archivo));
+      const token = ++ondaToken.current;
+      picosDeAudio(archivo).then((o) => token === ondaToken.current && setOnda(o));
+    }
   };
+  useEffect(() => {
+    alToma.current = seleccionar;
+  });
+
+  const cambiarFuente = (nueva) => {
+    if (busy || grabando || nueva === fuente) return;
+    setFuente(nueva);
+    seleccionar(null);
+  };
+
+  const prepararLetrasServidor = async () => {
+    setIniciandoLetras(true);
+    setError("");
+    try {
+      setLetras(await prepararLetras());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIniciandoLetras(false);
+    }
+  };
+
+  const preparar = async () => {
+    setIniciandoPrep(true);
+    setError("");
+    try {
+      setEstadoRep(await prepararRepertorio());
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setIniciandoPrep(false);
+    }
+  };
+
   const analizar = async (e) => {
     e.preventDefault();
-    if (!file || !n || busy) return;
-    const minimo = 5;
-    if (duracion !== null && (duracion < minimo || duracion > 600)) {
-      setError(
-        `Usa un audio de ${minimo} segundos a 10 minutos para este tipo de búsqueda.`,
-      );
+    if (!file || busy || grabando || !n) return;
+    const [minimo, maximo] = LIMITES.copyright;
+    if (duracion !== null && (duracion < minimo || duracion > maximo)) {
+      setError(`Tu audio debe durar entre ${tiempo(minimo)} y ${tiempo(maximo)}.`);
       return;
     }
     setTranscurrido(0);
     setBusy(true);
     setError("");
-    setResultado(null);
+    limpiarResultado();
     try {
+      setFase("subiendo");
       setEstado(subida ? "Preparando el análisis…" : "Subiendo el audio…");
-      const uploaded = subida || (await uploadMediaApi(file));
-      setSubida(uploaded);
-      setEstado("Buscando y verificando coincidencias…");
-      const res = await fetch("/api/audio/detect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          path: uploaded.path,
-          n_coleccion: Number(n),
-          ...params,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok)
-        throw new Error(
-          typeof data.detail === "string"
-            ? data.detail
-            : "No se pudo completar el análisis.",
-        );
-      setResultado(data);
+      const archivo = subida || (await subirAudio(file));
+      setSubida(archivo);
+      progresoId.current = globalThis.crypto?.randomUUID?.() || `a${Date.now()}${Math.floor(Math.random() * 1e6)}`;
+      setProgreso({});
+      setFase("analizando");
+      setEstado("Buscando la grabación y la letra cantada…");
+      const nuevo = await detectarCopyright(archivo.path, n, params, progresoId.current);
+      setResultado(nuevo);
+      setHistorial(guardarAnalisis(file.name, nuevo));
       setEstado("Análisis completado");
-    } catch (e) {
-      setError(e.message);
+    } catch (err) {
+      setError(err.message);
       setEstado("");
     } finally {
       setBusy(false);
+      setFase("");
     }
   };
+
+  const buscarEn = (segundo) => {
+    const audio = player.current;
+    if (!audio) return;
+    audio.currentTime = segundo;
+    audio.play().catch(() => {});
+  };
+  const abrirDelHistorial = (item) => {
+    seleccionar(null);
+    setResultado(item.resultado);
+    setDesdeHistorial(item.fecha);
+    setVentana(null);
+    panel.current?.scrollTo?.({ top: panel.current.scrollHeight, behavior: "smooth" });
+  };
+
   const sincronizar = (audio) => {
-    for (const otro of panel.current.querySelectorAll("audio")) {
-      if (otro !== audio) otro.pause();
-    }
+    for (const otro of panel.current.querySelectorAll("audio")) if (otro !== audio) otro.pause();
     setReproduciendo(audio === player.current ? fragmento.current : null);
   };
   const escuchar = (coincidencia) => {
@@ -204,425 +301,213 @@ export default function AudioCopyrightPanel() {
       fragmento.current = clave;
       audio.currentTime = coincidencia.inicio_s;
     }
-    audio.play().catch((e) => {
-      if (e.name !== "AbortError")
-        setError("Pulsa reproducir en el control de audio.");
+    audio.play().catch((err) => {
+      if (err.name !== "AbortError") setError("Pulsa reproducir en el control de audio.");
     });
   };
   const descargar = () => {
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(resultado, null, 2)], {
-        type: "application/json",
-      }),
-    );
+    const url = URL.createObjectURL(new Blob([JSON.stringify(resultado, null, 2)], { type: "application/json" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "analisis-audio.json";
+    a.download = "analisis-copyright.json";
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
-  const pistas = new Map();
-  for (const c of resultado?.coincidencias || []) {
-    if (!pistas.has(c.track_id)) pistas.set(c.track_id, []);
-    pistas.get(c.track_id).push(c);
-  }
-  const biblioteca = colecciones.find((c) => String(c.n) === n);
+  const nuevoAnalisis = () => {
+    seleccionar(null);
+    panel.current?.scrollTo?.({ top: 0, behavior: "smooth" });
+  };
+  const recargar = () => {
+    setCargando(true);
+    cargar();
+  };
+
+  const bloqueado = busy || grabando;
+  const puedeAnalizar = !!file && !cargando && !bloqueado && !!n;
+  const motivo = !file ? (fuente === "grabar" ? "Graba una toma" : "Sube un audio") : !n ? "No hay biblioteca disponible" : "";
+  const letrasListas = !!letras?.tabla_lista;
+  const opciones = ventana === "opciones";
+  const tramos = useMemo(() => {
+    if (!resultado || desdeHistorial) return [];
+    const colores = coloresPorPista(resultado.coincidencias);
+    return resultado.coincidencias.map((c) => ({ inicio_s: c.inicio_s, fin_s: c.fin_s, titulo: c.titulo, color: colores.get(c.track_id) }));
+  }, [resultado, desdeHistorial]);
 
   return (
-    <div ref={panel} className="shop" aria-label="Detección de copyright en audio">
-      <header className="shop-header">
-        <div className="shop-brand">
-          <Music size={23} />
+    <div ref={panel} className="estudio" aria-label="Detección de copyright">
+      <header ref={cabecera} className={"estudio-header" + (grabando ? " is-live" : "")}>
+        <span className="banner-ondas" aria-hidden="true">
+          {BARRAS_BANNER.map((b, i) => (
+            <i key={i} style={{ "--alto": `${b.alto}%`, "--retardo": `${b.retardo}s` }} />
+          ))}
+        </span>
+        <div className="estudio-marca">
+          <span className="estudio-logo" aria-hidden="true">
+            <LogoEstudio />
+          </span>
           <div>
-            <strong>Copyright de audio</strong>
-            <span>Encuentra fragmentos de canciones originales</span>
+            <span className="estudio-eyebrow">
+              <i aria-hidden="true" /> {grabando ? "Grabando en cabina" : "Estudio de grabación"}
+            </span>
+            <strong>Detección de copyright</strong>
+            <span>Encuentra la grabación original o una canción del repertorio cantada por ti</span>
           </div>
         </div>
-        <button
-          type="button"
-          className="shop-button"
-          onClick={() => {
-            setCargando(true);
-            cargar();
-          }}
-          disabled={busy || cargando}
-          title="Actualizar biblioteca"
-        >
-          <RefreshCw size={16} className={cargando ? "motion-safe:animate-spin" : ""} /> Actualizar biblioteca
-        </button>
+        <div className="estudio-acciones">
+          <button
+            type="button"
+            className={"estudio-btn" + (opciones ? " is-activo" : "")}
+            onClick={() => setVentana(opciones ? null : "opciones")}
+            aria-expanded={opciones}
+            aria-controls="opciones-avanzadas"
+          >
+            <SlidersHorizontal size={15} aria-hidden="true" /> Opciones avanzadas
+          </button>
+          <button
+            type="button"
+            className={"estudio-btn" + (ventana === "historial" ? " is-activo" : "")}
+            onClick={() => setVentana(ventana === "historial" ? null : "historial")}
+            aria-expanded={ventana === "historial"}
+            aria-controls="historial-analisis"
+          >
+            <History size={15} aria-hidden="true" /> Historial
+            {historial.length > 0 && <span className="estudio-chip">{historial.length}</span>}
+          </button>
+          <button type="button" className="estudio-btn" onClick={recargar} disabled={bloqueado || cargando} title="Volver a leer bibliotecas y repertorio">
+            <RefreshCw size={15} className={cargando ? "motion-safe:animate-spin" : ""} aria-hidden="true" /> Actualizar
+          </button>
+        </div>
+        {opciones && (
+          <div id="opciones-avanzadas" className="opciones-flotante" role="dialog" aria-label="Opciones avanzadas del detector">
+            <button type="button" className="opciones-cerrar" aria-label="Cerrar opciones" onClick={() => setVentana(null)}>
+              <X size={16} />
+            </button>
+            {avisos.bibliotecas && <p className="estudio-aviso">{avisos.bibliotecas}</p>}
+            <ParametrosCopyright
+              params={params}
+              cambiar={(clave, valor) => setParams((p) => ({ ...p, [clave]: valor }))}
+              colecciones={colecciones}
+              n={n}
+              setN={(v) => {
+                setN(v);
+                setResultado(null);
+              }}
+              cargando={cargando}
+              busy={busy}
+            />
+          </div>
+        )}
+        {ventana === "historial" && (
+          <div id="historial-analisis" className="opciones-flotante" role="dialog" aria-label="Historial de análisis">
+            <button type="button" className="opciones-cerrar" aria-label="Cerrar historial" onClick={() => setVentana(null)}>
+              <X size={16} />
+            </button>
+            <Historial
+              items={historial}
+              onAbrir={abrirDelHistorial}
+              onBorrar={(id) => setHistorial(borrarAnalisis(id))}
+              onVaciar={() => setHistorial(vaciarHistorial())}
+            />
+          </div>
+        )}
       </header>
-      <div className="shop-notice">
-        Audio · MFCC + BoAW → coincidencias temporales · La similitud es orientativa y no demuestra una infracción
-      </div>
+
       {error && (
-        <div className="shop-error" role="alert">
+        <div className="estudio-error" role="alert">
           {error}
-          <button aria-label="Cerrar error" onClick={() => setError("")}>
+          <button type="button" aria-label="Cerrar error" onClick={() => setError("")}>
             <X size={16} />
           </button>
         </div>
       )}
 
-      <div className="shop-intro">
-        <div>
-          <p className="shop-eyebrow">DETECCIÓN DE COPYRIGHT</p>
-          <h1>Descubre qué canciones hay dentro de tu audio.</h1>
-          <p>
-            Sube una canción, un remix o un cover y el sistema la divide en bloques de 5 a 10 segundos para
-            compararla con la biblioteca de originales.
-          </p>
-        </div>
-        {!!biblioteca?.canciones && (
-          <span className="shop-count">{biblioteca.canciones.toLocaleString()} canciones en esta fuente</span>
-        )}
-      </div>
-
-      <form onSubmit={analizar} className="audio-layout">
-        <section className="audio-card" aria-label="Audio de consulta">
-          <h2>
-            <Upload size={17} /> Tu audio
-          </h2>
-          <label
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = busy ? "none" : "copy";
-            }}
-            onDrop={(e) => {
-              e.preventDefault();
-              if (!busy && e.dataTransfer.files.length) {
-                seleccionar(e.dataTransfer.files[0]);
-                e.currentTarget.querySelector("input").value = "";
-              }
-            }}
-            className={"audio-drop" + (file ? " has-file" : "") + (busy ? " is-busy" : "")}
-          >
-            <Upload size={28} aria-hidden="true" />
-            <strong title={file?.name}>{file?.name || "Selecciona o arrastra un audio"}</strong>
-            <span>
-              {file
-                ? `${(file.size / 1024 / 1024).toFixed(2)} MB · Haz clic para cambiar`
-                : "MP3, WAV, FLAC, OGG o M4A"}
-            </span>
-            <input
-              type="file"
-              accept=".mp3,.wav,.ogg,.flac,.m4a"
-              disabled={busy}
-              className="sr-only"
-              aria-label="Seleccionar audio"
-              onChange={(e) => seleccionar(e.target.files?.[0] || null)}
-            />
-          </label>
-          {preview && (
-            <audio
-              key={preview}
-              ref={player}
-              src={preview}
-              controls
-              preload="metadata"
-              onPlay={(e) => sincronizar(e.currentTarget)}
-              onPause={() => setReproduciendo(null)}
-              onEnded={() => setReproduciendo(null)}
-              onLoadedMetadata={(e) => setDuracion(e.currentTarget.duration)}
-              className="audio-player"
-              aria-label="Escuchar tu audio"
-            />
-          )}
-          <p className="audio-hint">5 s a 10 min · Máximo 50 MB</p>
-        </section>
-
-        <section className="audio-card" aria-label="Parámetros de búsqueda">
-          <h2>
-            <SlidersHorizontal size={17} /> Parámetros de búsqueda
-          </h2>
-          <fieldset disabled={busy} className="audio-fields">
-            <label className="audio-field audio-wide" title="Buscar solo en una fuente compara menos canciones y responde antes">
-              Fuente de búsqueda
-              <select
-                value={n}
-                onChange={(e) => {
-                  setN(e.target.value);
-                  setResultado(null);
-                }}
-                required
-              >
-                {!colecciones.length && (
-                  <option value="">{cargando ? "Cargando biblioteca…" : "Sin biblioteca disponible"}</option>
-                )}
-                {colecciones.map((c) => (
-                  <option key={c.n} value={c.n}>
-                    {c.nombre || c.tabla}
-                    {c.canciones ? ` · ${c.canciones.toLocaleString()} canciones` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="audio-field">
-              Bloque de análisis
-              <select value={params.segmento_s} onChange={(e) => cambiar("segmento_s", Number(e.target.value))}>
-                <option value={5}>5 segundos</option>
-                <option value={10}>10 segundos</option>
-              </select>
-            </label>
-            <NumericField ayuda="Cuántos segmentos parecidos se traen de la biblioteca por cada ventana de tu audio" label="Vecinos (k)" min={1} max={200} value={params.k} onChange={(v) => cambiar("k", v)} />
-            <NumericField
-              ayuda="Parecido mínimo del histograma BoAW para que un segmento sea candidato (0–100)"
-              label="Similitud BoAW mínima (%)"
-              min={0}
-              max={100}
-              value={Math.round(params.umbral * 100)}
-              onChange={(v) => cambiar("umbral", v / 100)}
-            />
-            <label className="audio-field" title="Exacta compara contra todo (más precisa). HNSW e IVF son aproximadas y más rápidas">
-              Método de búsqueda
-              <select value={params.metodo} onChange={(e) => cambiar("metodo", e.target.value)}>
-                <option value="EXACTO">Exacta</option>
-                <option value="HNSW">HNSW</option>
-                <option value="IVF">IVF</option>
-              </select>
-            </label>
-          </fieldset>
-          <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-            <details className="audio-advanced">
-              <summary>
-                <Settings2 size={16} /> Ajustes avanzados
-              </summary>
-              <div className="audio-fields">
-                <NumericField
-                  ayuda="Cada cuántos segundos se toma una ventana de tu audio. Menos salto = más preciso y más lento"
-                  label="Salto entre ventanas (s)"
-                  min={0.1}
-                  max={1}
-                  step={0.1}
-                  value={params.paso_s}
-                  onChange={(v) => cambiar("paso_s", v)}
-                />
-                <NumericField
-                  ayuda="Ventanas consecutivas que deben coincidir con la misma zona de la canción original"
-                  label="Votos temporales mínimos"
-                  min={2}
-                  max={20}
-                  value={params.min_votos}
-                  onChange={(v) => cambiar("min_votos", v)}
-                />
-                <NumericField
-                  ayuda="Parecido mínimo de la secuencia MFCC al verificar cada coincidencia"
-                  label="Similitud de secuencia mínima (%)"
-                  min={0}
-                  max={100}
-                  value={Math.round(params.umbral_secuencia * 100)}
-                  onChange={(v) => cambiar("umbral_secuencia", v / 100)}
-                />
-                <label className="audio-check">
-                  <input
-                    type="checkbox"
-                    checked={params.reducir_ruido}
-                    onChange={(e) => cambiar("reducir_ruido", e.target.checked)}
-                  />
-                  Compensar ruido de fondo
-                </label>
-              </div>
-            </details>
-          </fieldset>
-          <div className="audio-actions">
-            <button type="submit" className="shop-primary" disabled={!file || !n || cargando || busy}>
-              {busy ? (
-                <LoaderCircle size={16} className="motion-safe:animate-spin" aria-hidden="true" />
-              ) : (
-                <Search size={16} aria-hidden="true" />
-              )}
-              {busy ? "Analizando…" : "Analizar audio"}
-            </button>
-          </div>
-        </section>
-      </form>
-
-      <div ref={resultados} aria-busy={busy}>
-        {!resultado && !error && (
-          <div className="audio-state" role="status">
-            {busy ? (
-              <LoaderCircle size={34} className="motion-safe:animate-spin" aria-hidden="true" />
-            ) : (
-              <Inbox size={34} strokeWidth={1.5} aria-hidden="true" />
-            )}
-            <h2>{busy ? "Analizando tu audio" : "Encuentra coincidencias en tu biblioteca"}</h2>
-            <p>
-              {busy
-                ? `${estado} ${tiempo(transcurrido)} transcurridos.`
-                : "Selecciona un archivo y pulsa Analizar audio para buscar fragmentos coincidentes."}
-            </p>
-          </div>
-        )}
-
-        {resultado && (
-          <>
-            <div className="shop-section-title">
-              <h2>Resultado del análisis</h2>
-              <button type="button" onClick={descargar} className="shop-button">
-                <Download size={15} aria-hidden="true" /> Exportar informe
-              </button>
+      <div className="estudio-layout">
+        <form onSubmit={analizar} className="estudio-una">
+          <section className="estudio-card is-cabina" aria-label="Tu audio">
+            <div className="fuente-selector" role="group" aria-label="Cómo cargar el audio">
+              {FUENTES.map(({ clave, icono: IconoFuente, texto }) => (
+                <button
+                  key={clave}
+                  type="button"
+                  className={fuente === clave ? "is-active" : ""}
+                  aria-pressed={fuente === clave}
+                  onClick={() => cambiarFuente(clave)}
+                  disabled={bloqueado}
+                >
+                  <IconoFuente size={16} aria-hidden="true" /> {texto}
+                </button>
+              ))}
             </div>
-            <p className={resultado.coincidencias.length ? "shop-error" : "shop-success"} role="status">
-              {resultado.conclusion}
-            </p>
-            <dl className="audio-stats">
-              {[
-                ["Canciones encontradas", pistas.size],
-                ["Tramos coincidentes", resultado.coincidencias.length],
-                ["Duración del audio", tiempo(resultado.duracion_s)],
-                [
-                  "Tiempo de análisis",
-                  ((resultado.metricas.total_ms ?? resultado.metricas.tiempo_ms) / 1000).toFixed(2) + " s",
-                ],
-              ].map(([nombre, valor]) => (
-                <div key={nombre} className="audio-stat">
-                  <dt>{nombre}</dt>
-                  <dd>{valor}</dd>
-                </div>
-              ))}
-            </dl>
+            {fuente === "grabar" && <Grabadora grabacion={grabacion} deshabilitada={busy} />}
+            <FuenteAudio
+              sinZona={fuente === "grabar"}
+              onda={onda}
+              tramos={tramos}
+              posicion={tiempoS}
+              onBuscar={buscarEn}
+              onTiempo={setTiempoS}
+              file={file}
+              preview={preview}
+              duracion={duracion}
+              limites={LIMITES.copyright}
+              bloqueada={bloqueado}
+              onSeleccionar={seleccionar}
+              onEliminar={() => seleccionar(null)}
+              playerRef={player}
+              onPlay={sincronizar}
+              onStop={() => setReproduciendo(null)}
+              onDuracion={setDuracion}
+            />
+            <div className="cabina-acciones">
+              <p className="estudio-nota">
+                {fuente === "grabar" ? "La grabación se detiene sola a los 2 min" : "5 s a 10 min · máximo 50 MB"}
+              </p>
+            <button type="submit" className="estudio-btn is-primario" disabled={!puedeAnalizar} title={motivo}>
+              {busy ? <LoaderCircle size={17} className="motion-safe:animate-spin" aria-hidden="true" /> : <Search size={17} aria-hidden="true" />}
+              {busy ? "Analizando…" : "Analizar"}
+            </button>
+            {!busy && motivo && <p className="estudio-nota">{motivo}</p>}
+            </div>
+          </section>
 
-            <section className="audio-section">
-              <div className="shop-section-title">
-                <h2>Línea de tiempo</h2>
-                <span>Pulsa un tramo para escucharlo</span>
-              </div>
-              {!pistas.size && <p className="shop-empty">Ningún fragmento superó los criterios de confirmación.</p>}
-              {[...pistas.values()].map((eventos, i) => (
-                <div key={eventos[0].track_id}>
-                  <p className="audio-track-name" title={`${eventos[0].titulo} · ${eventos[0].artista}`}>
-                    <i style={{ backgroundColor: colores[i % colores.length] }} />
-                    <strong>{eventos[0].titulo}</strong>
-                    <span> · {eventos[0].artista}</span>
-                  </p>
-                  <div className="audio-track">
-                    {eventos.map((c) => (
-                      <button
-                        key={`${c.inicio_s}:${c.fin_s}`}
-                        type="button"
-                        onClick={() => escuchar(c)}
-                        style={{
-                          left: `${(100 * c.inicio_s) / resultado.duracion_s}%`,
-                          width: `${(100 * (c.fin_s - c.inicio_s)) / resultado.duracion_s}%`,
-                          backgroundColor: colores[i % colores.length],
-                        }}
-                        className="audio-seg"
-                        title={`${tiempo(c.inicio_s)}–${tiempo(c.fin_s)} · ${c.porcentaje_similitud}% de similitud`}
-                        aria-pressed={reproduciendo === claveFragmento(c)}
-                        aria-label={`${reproduciendo === claveFragmento(c) ? "Pausar" : "Reproducir"} ${c.titulo} desde ${tiempo(c.inicio_s)}`}
-                      >
-                        {c.fin_s - c.inicio_s > resultado.duracion_s * 0.1 ? `${c.porcentaje_similitud}%` : ""}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-              <div className="audio-scale">
-                <span>0:00</span>
-                <span>{tiempo(resultado.duracion_s)}</span>
-              </div>
-            </section>
+        </form>
 
-            {!!pistas.size && (
-              <section className="audio-section">
-                <div className="shop-section-title">
-                  <h2>Detalle de coincidencias</h2>
-                  <span>{resultado.coincidencias.length} tramos</span>
-                </div>
-                <div className="audio-table-wrap">
-                  <table className="audio-table">
-                    <thead>
-                      <tr>
-                        {["En tu audio", "Canción de referencia", "En la referencia", "Similitud", "Escuchar"].map((h) => (
-                          <th key={h} scope="col">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {resultado.coincidencias.map((c) => (
-                        <tr key={`${c.track_id}:${c.inicio_s}:${c.fin_s}`}>
-                          <td className="audio-time">
-                            {tiempo(c.inicio_s)}–{tiempo(c.fin_s)}
-                          </td>
-                          <td>
-                            <strong>{c.titulo}</strong>
-                            <small>
-                              {c.artista}
-                              {c.fuente ? ` · ${c.fuente}` : ""}
-                            </small>
-                          </td>
-                          <td className="audio-time">
-                            {tiempo(c.original_inicio_s)}–{tiempo(c.original_fin_s)}
-                          </td>
-                          <td>
-                            <span className="audio-badge">{c.porcentaje_similitud}%</span>
-                            <small>{c.votos} votos temporales</small>
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              onClick={() => escuchar(c)}
-                              className="shop-button audio-mini"
-                              aria-pressed={reproduciendo === claveFragmento(c)}
-                              aria-label={reproduciendo === claveFragmento(c) ? "Pausar tu audio" : "Reproducir tu audio"}
-                            >
-                              {reproduciendo === claveFragmento(c) ? (
-                                <Pause size={13} aria-hidden="true" />
-                              ) : (
-                                <Play size={13} aria-hidden="true" />
-                              )}
-                              {reproduciendo === claveFragmento(c) ? "Pausar" : "Tu audio"}
-                            </button>
-                            {c.audio_url && (
-                              <audio
-                                controls
-                                onPlay={(e) => sincronizar(e.currentTarget)}
-                                preload="none"
-                                src={`${c.audio_url}#t=${c.original_inicio_s},${c.original_fin_s}`}
-                                className="audio-ref"
-                                aria-label={`Referencia: ${c.titulo}`}
-                              />
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            )}
-
-            {!!resultado.segmentos?.length && (
-              <details className="shop-traces">
-                <summary>Candidatos por histograma ({resultado.segmentos.length} bloques)</summary>
-                <p>
-                  La similitud BoAW preselecciona candidatos. La alineación temporal y la secuencia verifican cada
-                  coincidencia.
-                </p>
-                {resultado.segmentos.map((segmento) => (
-                  <div key={segmento.inicio_s} className="audio-candidate">
-                    <strong className="audio-time">
-                      {tiempo(segmento.inicio_s)}–{tiempo(segmento.fin_s)}
-                    </strong>{" "}
-                    · {segmento.coincidencias.length} coincidencias con evidencia temporal
-                    <p>
-                      {segmento.candidatos
-                        .slice(0, 5)
-                        .map(
-                          (c) =>
-                            c.titulo + " (BoAW: " + (c.porcentaje_similitud ?? (100 * c.similitud).toFixed(2)) + "%)",
-                        )
-                        .join(" · ") || "Sin candidatos"}
-                    </p>
-                  </div>
-                ))}
-              </details>
-            )}
-            <p className="audio-notice">{resultado.aviso}</p>
-          </>
-        )}
+        <div className="repertorio-celda">
+          <section className="estudio-card repertorio-plegable" aria-label="Canciones que se pueden cantar">
+            <div className="estudio-card-title">
+              <Disc3 size={16} aria-hidden="true" /> Canciones que se pueden cantar
+              <span className="estudio-chip">{repertorio.length}</span>
+            </div>
+            <Repertorio
+              canciones={repertorio}
+              estado={estadoRep}
+              onPreparar={preparar}
+              iniciando={iniciandoPrep}
+              error={avisos.repertorio}
+              letras={letras}
+              letrasListas={letrasListas}
+              onPrepararLetras={prepararLetrasServidor}
+              iniciandoLetras={iniciandoLetras}
+            />
+          </section>
+        </div>
       </div>
+
+      <PanelResultados
+        busy={busy}
+        fase={fase}
+        progreso={progreso}
+        transcurrido={transcurrido}
+        resultado={resultado}
+        desdeHistorial={desdeHistorial}
+        reproduciendo={reproduciendo}
+        tiempoS={tiempoS}
+        onBuscar={file ? buscarEn : undefined}
+        onEscuchar={escuchar}
+        onSincronizar={sincronizar}
+        onNuevo={nuevoAnalisis}
+        onExportar={descargar}
+      />
     </div>
   );
 }
