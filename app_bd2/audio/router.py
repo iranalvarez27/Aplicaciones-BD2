@@ -15,6 +15,8 @@ if str(ENGINE_HOME) not in sys.path:
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from backend.audio_detection import agregar_acapella, agregar_letras
+from deteccion import letras
 from deteccion.detector import BusquedaAudio, Detector, Parametros
 from multimedia import bovw, config
 from multimedia import colecciones_audio
@@ -34,6 +36,7 @@ class DetectionRequest(BaseModel):
     representacion: str = 'hibrida'
     umbral_secuencia: float = Field(default=.60, ge=0, le=1)
     reducir_ruido: bool = True
+    progreso_id: str | None = Field(default=None, max_length=64)
 
 
 def resolver_subida(root, ruta):
@@ -163,7 +166,7 @@ def crear_router(conexion, root):
         inicio_total = time.perf_counter()
         try:
             ruta = resolver_subida(root, req.path)
-            params = replace(Parametros(), **req.model_dump(exclude={'path', 'n_coleccion'}))
+            params = replace(Parametros(), **req.model_dump(exclude={'path', 'n_coleccion', 'progreso_id'}))
             params.validar()
             tabla = tabla_audio(req.n_coleccion)
             if not conexion.catalog.existe_tabla(tabla):
@@ -187,7 +190,11 @@ def crear_router(conexion, root):
             def original(pid):
                 return ruta_local(metas[pid]['ruta'], ENGINE_HOME)
             detector = Detector(None, None, extractor, params, resolver_original=original, busqueda=busqueda)
+            letras.iniciar_progreso(req.progreso_id)
+            letras.marcar(req.progreso_id, 'grabacion', 'activo')
             resultado = enriquecer(detector.detectar(y), metas, ENGINE_HOME)
+            letras.marcar(req.progreso_id, 'grabacion', 'hecho')
+            resultado = letras.complementar(resultado, y, int(extractor.meta['sr']), conexion, lambda r: url_original(r, ENGINE_HOME), req.progreso_id)
             resultado['metricas'].update(metadata_ms=round(tiempo_meta, 2), metadata_cache=cache_meta,
                                           metadata_origen=origen_meta,
                                           total_ms=round((time.perf_counter() - inicio_total) * 1000, 2))
@@ -198,4 +205,6 @@ def crear_router(conexion, root):
         except (ValueError, OSError, RuntimeError) as ex:
             raise HTTPException(status_code=400, detail=str(ex)) from ex
 
+    agregar_acapella(router, root, ENGINE_HOME)
+    agregar_letras(router, root, conexion)
     return router
