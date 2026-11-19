@@ -37,4 +37,34 @@ export const subirAudio = uploadMediaApi;
 export const estadoLetras = (signal) =>
   fetch("/api/audio/letras/status", { signal }).then((r) => json(r, "No se pudo leer el estado de las letras."));
 
+const memoria = { portadas: new Map(), letras: new Map() };
+
+function recordar(mapa, clave, pedir) {
+  if (!mapa.has(clave)) {
+    const promesa = pedir().then((valor) => {
+      if (!valor) mapa.delete(clave);
+      return valor;
+    }, () => {
+      mapa.delete(clave);
+      return null;
+    });
+    mapa.set(clave, promesa);
+  }
+  return mapa.get(clave);
+}
+
+export const portadaDe = (titulo, artista = "") =>
+  recordar(memoria.portadas, `${artista}|${titulo}`, () =>
+    fetch(`/api/audio/acapella/cover?${new URLSearchParams({ titulo, artista })}`)
+      .then((r) => json(r, ""))
+      .then((d) => d.url || null),
+  );
+
+export const letraDe = (titulo, artista = "", duracion) =>
+  recordar(memoria.letras, `${artista}|${titulo}`, () =>
+    fetch(`/api/audio/acapella/lyrics?${new URLSearchParams({ titulo, artista, ...(duracion ? { duracion } : {}) })}`)
+      .then((r) => json(r, ""))
+      .then((d) => (d.sincronizada?.length || d.plana ? d : null)),
+  );
+
 export const prepararLetras = () => enviar("/api/audio/letras/prepare", {}, "No se pudo iniciar la preparación de las letras.");

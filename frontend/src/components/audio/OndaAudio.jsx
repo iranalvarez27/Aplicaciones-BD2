@@ -13,11 +13,20 @@ export default function OndaAudio({ picos, duracion, tramos = [], posicion = 0, 
   };
   return (
     <div className="onda" onClick={buscar} role={onBuscar ? "slider" : "img"} aria-label="Forma de onda del audio" aria-valuemin={0} aria-valuemax={Math.round(duracion)} aria-valuenow={Math.round(posicion)}>
-      <svg viewBox={`0 0 ${n} 40`} preserveAspectRatio="none" aria-hidden="true">
-        {picos.map((p, i) => (
-          <rect key={i} x={i + 0.18} y={20 - Math.max(1, p * 19)} width="0.64" height={Math.max(2, p * 38)} rx="0.3" />
-        ))}
-      </svg>
+      {[false, true].map((progreso) => (
+        <svg
+          key={progreso ? "progreso" : "base"}
+          className={progreso ? "onda-progreso" : ""}
+          style={progreso ? { clipPath: `inset(0 ${100 - Math.min(100, Math.max(0, (100 * posicion) / duracion))}% 0 0)` } : undefined}
+          viewBox={`0 0 ${n} 40`}
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        >
+          {picos.map((p, i) => (
+            <rect key={i} x={i + 0.18} y={20 - Math.max(1, p * 19)} width="0.64" height={Math.max(2, p * 38)} rx="0.3" />
+          ))}
+        </svg>
+      ))}
       {tramos.map((t) => (
         <i
           key={`${t.inicio_s}:${t.fin_s}:${t.color}`}

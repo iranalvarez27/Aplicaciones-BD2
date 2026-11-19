@@ -3,7 +3,7 @@ import { Mic, Square, X } from "lucide-react";
 import NivelMicrofono from "./NivelMicrofono";
 import { tiempo } from "./formato";
 
-const BARRAS = 24;
+const BARRAS = 56;
 
 function dibujar(canvas, analizador, picos) {
   const ctx = canvas.getContext("2d");
@@ -12,33 +12,22 @@ function dibujar(canvas, analizador, picos) {
   analizador.getFloatTimeDomainData(onda);
   ctx.clearRect(0, 0, w, h);
 
-  const ancho = w / BARRAS;
+  const paso = w / BARRAS;
+  const ancho = Math.max(3, paso * 0.55);
   const tramo = Math.floor(onda.length / BARRAS);
+  ctx.fillStyle = "#1ed760";
   for (let b = 0; b < BARRAS; b++) {
     let suma = 0;
     for (let i = b * tramo; i < (b + 1) * tramo; i++) suma += onda[i] * onda[i];
-    const nivel = Math.min(1, Math.sqrt(suma / tramo) * 6);
-    picos[b] = Math.max(nivel, picos[b] * 0.92);
-    const alto = Math.max(3, picos[b] * h * 0.9);
-    const g = ctx.createLinearGradient(0, h, 0, h - alto);
-    g.addColorStop(0, "#3dd6c3");
-    g.addColorStop(0.65, "#ffb547");
-    g.addColorStop(1, "#ff5a7a");
-    ctx.fillStyle = g;
-    ctx.globalAlpha = 0.35;
-    ctx.fillRect(b * ancho + 2, h - alto, ancho - 4, alto);
+    const nivel = Math.min(1, Math.sqrt(suma / tramo) * 7);
+    picos[b] = Math.max(nivel, picos[b] * 0.9);
+    const alto = Math.max(ancho, picos[b] * h * 0.95);
+    ctx.globalAlpha = 0.45 + 0.55 * picos[b];
+    ctx.beginPath();
+    ctx.roundRect(b * paso + (paso - ancho) / 2, (h - alto) / 2, ancho, alto, ancho / 2);
+    ctx.fill();
   }
   ctx.globalAlpha = 1;
-
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = "#ffffff";
-  ctx.beginPath();
-  for (let x = 0; x < w; x++) {
-    const y = h / 2 + onda[Math.floor((x / w) * onda.length)] * h * 0.9;
-    if (x === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.stroke();
 }
 
 export function Osciloscopio({ grabacion }) {
@@ -55,7 +44,7 @@ export function Osciloscopio({ grabacion }) {
     animar();
     return () => cancelAnimationFrame(cuadro);
   }, [grabando, analizadorRef]);
-  return <canvas ref={lienzo} width={420} height={90} className="cabina-osc" aria-hidden="true" />;
+  return <canvas ref={lienzo} width={840} height={96} className="cabina-osc" aria-hidden="true" />;
 }
 
 export function EstadoToma({ grabacion }) {
@@ -82,7 +71,7 @@ export default function Grabadora({ grabacion, deshabilitada }) {
   return (
     <div className={"cabina" + (grabando ? " is-live" : "")}>
       <div className="cabina-onair" aria-hidden="true">
-        <span className="cabina-luz" /> {grabando ? "ON AIR" : "EN ESPERA"}
+        <span className="cabina-luz" /> {grabando ? "GRABANDO" : "LISTO PARA GRABAR"}
       </div>
       <button
         type="button"
@@ -94,7 +83,7 @@ export default function Grabadora({ grabacion, deshabilitada }) {
       >
         <span className="cabina-anillo" aria-hidden="true" />
         <span className="cabina-anillo is-2" aria-hidden="true" />
-        {grabando ? <Square size={30} fill="currentColor" /> : <Mic size={40} />}
+        {grabando ? <Square size={30} fill="currentColor" /> : <Mic size={42} />}
       </button>
       {grabando ? (
         <>
@@ -102,11 +91,14 @@ export default function Grabadora({ grabacion, deshabilitada }) {
           <EstadoToma grabacion={grabacion} />
         </>
       ) : (
-        <p className="cabina-guia">
-          Pulsa el micrófono y canta de <strong>5 s a 2 min</strong>, a capela o con la pista de fondo.
-          <br />
-          Canta la letra clara y cerca del micrófono.
-        </p>
+        <div className="cabina-guia">
+          <h3>Toca el micrófono para grabar</h3>
+          <p>
+            Canta de <strong>5 s a 2 min</strong>, a capela o con la pista de fondo.
+            <br />
+            Con la letra clara y cerca del micrófono.
+          </p>
+        </div>
       )}
       {!grabando && <NivelMicrofono grabando={grabando} deshabilitado={deshabilitada} />}
     </div>

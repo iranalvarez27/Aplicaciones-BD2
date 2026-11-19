@@ -1,8 +1,29 @@
 import React from "react";
-import { History, ShieldAlert, ShieldCheck, Trash2 } from "lucide-react";
+import { History, ShieldCheck, Trash2 } from "lucide-react";
+import Portada from "./Portada";
 
 const fecha = (iso) =>
   new Date(iso).toLocaleString("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+
+function Portadas({ item }) {
+  const vistas = new Map();
+  for (const c of item.resultado?.coincidencias || []) if (!vistas.has(c.track_id)) vistas.set(c.track_id, c);
+  const canciones = [...vistas.values()].slice(0, 3);
+  if (!canciones.length) {
+    return (
+      <span className="historial-escudo" aria-hidden="true">
+        <ShieldCheck size={20} />
+      </span>
+    );
+  }
+  return (
+    <span className="historial-portadas" aria-hidden="true">
+      {canciones.map((c) => (
+        <Portada key={c.track_id} titulo={c.titulo} artista={c.artista} />
+      ))}
+    </span>
+  );
+}
 
 export default function Historial({ items, onAbrir, onBorrar, onVaciar }) {
   return (
@@ -23,7 +44,7 @@ export default function Historial({ items, onAbrir, onBorrar, onVaciar }) {
           {items.map((x) => (
             <li key={x.id}>
               <button type="button" className="historial-item" onClick={() => onAbrir(x)} title="Volver a ver este resultado">
-                {x.hay ? <ShieldAlert size={18} aria-hidden="true" /> : <ShieldCheck size={18} aria-hidden="true" />}
+                <Portadas item={x} />
                 <span>
                   <strong>{x.archivo}</strong>
                   <small>

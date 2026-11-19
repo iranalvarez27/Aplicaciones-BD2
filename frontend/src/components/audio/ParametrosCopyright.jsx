@@ -1,5 +1,5 @@
 import React from "react";
-import { Library, Settings2, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Library, Settings2, SlidersHorizontal } from "lucide-react";
 
 function Perilla({ label, ayuda, value, onChange, min, max, step = 1, sufijo = "" }) {
   return (
@@ -11,7 +11,16 @@ function Perilla({ label, ayuda, value, onChange, min, max, step = 1, sufijo = "
           {sufijo}
         </output>
       </span>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(Number(e.target.value))} />
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        style={{ "--pct": `${((value - min) / (max - min)) * 100}%` }}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <small className="campo-ayuda">{ayuda}</small>
     </label>
   );
 }
@@ -37,6 +46,7 @@ export default function ParametrosCopyright({ params, cambiar, colecciones, n, s
               </option>
             ))}
           </select>
+          <small className="campo-ayuda">Buscar solo en una fuente compara menos canciones y responde antes.</small>
         </label>
         <label className="campo">
           <span>Bloque de análisis</span>
@@ -44,6 +54,7 @@ export default function ParametrosCopyright({ params, cambiar, colecciones, n, s
             <option value={5}>5 segundos</option>
             <option value={10}>10 segundos</option>
           </select>
+          <small className="campo-ayuda">Cada cuántos segundos de tu audio se compara.</small>
         </label>
         <label className="campo" title="Exacta compara contra todo (más precisa). HNSW e IVF son aproximadas y más rápidas">
           <span>Método de búsqueda</span>
@@ -52,6 +63,7 @@ export default function ParametrosCopyright({ params, cambiar, colecciones, n, s
             <option value="HNSW">HNSW</option>
             <option value="IVF">IVF</option>
           </select>
+          <small className="campo-ayuda">Exacta es más precisa; HNSW e IVF son más rápidas.</small>
         </label>
         <Perilla
           label="Vecinos (k)"
@@ -75,6 +87,7 @@ export default function ParametrosCopyright({ params, cambiar, colecciones, n, s
         <details className="consola-avanzado">
           <summary>
             <Settings2 size={15} aria-hidden="true" /> Ajustes avanzados
+            <ChevronDown size={16} className="consola-chevron" aria-hidden="true" />
           </summary>
           <div className="consola-campos">
             <Perilla
@@ -106,7 +119,10 @@ export default function ParametrosCopyright({ params, cambiar, colecciones, n, s
             />
             <label className="campo-check">
               <input type="checkbox" checked={params.reducir_ruido} onChange={(e) => cambiar("reducir_ruido", e.target.checked)} />
-              Compensar ruido de fondo
+              <span>
+                Compensar ruido de fondo
+                <small className="campo-ayuda">Limpia el ruido antes de comparar.</small>
+              </span>
             </label>
           </div>
         </details>

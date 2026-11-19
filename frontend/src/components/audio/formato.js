@@ -10,7 +10,7 @@ export const TAMANO_MAX = 50 * 1024 * 1024;
 
 export const claveFragmento = (c) => `${c.track_id}:${c.inicio_s}:${c.fin_s}`;
 
-export const COLORES = ["#ff5a7a", "#ffb547", "#3dd6c3", "#8b7bff", "#5aa9ff"];
+export const COLORES = ["#1ed760", "#a78bfa", "#ff6b9a", "#ffb547", "#4cb3ff"];
 
 export function coloresPorPista(coincidencias) {
   const mapa = new Map();

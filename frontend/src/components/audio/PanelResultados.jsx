@@ -21,7 +21,7 @@ function Pasos({ fase, progreso, transcurrido }) {
   const estadoDe = (clave) => {
     if (subiendo) return "espera";
     if (progreso?.[clave]) return progreso[clave];
-    return clave === "grabacion" ? "activo" : "espera"; // antes de la primera consulta de avance
+    return clave === "grabacion" ? "activo" : "espera";
   };
   const clase = (e) => (e === "hecho" ? "is-hecho" : e === "omitida" ? "is-omitida" : e === "activo" ? "is-activo" : "is-espera");
   return (
@@ -59,7 +59,8 @@ function Pasos({ fase, progreso, transcurrido }) {
   );
 }
 
-export default function PanelResultados({ busy, fase, progreso, transcurrido, resultado, desdeHistorial, reproduciendo, tiempoS, onBuscar, onEscuchar, onSincronizar, onNuevo, onExportar }) {
+export default function PanelResultados({ busy, fase, progreso, transcurrido, resultado, desdeHistorial, reproduciendo, tiempoS, onBuscar, onEscuchar, onSincronizar, onNuevo, onExportar, repertorioIds, onVerLetra }) {
+  if (!resultado && !busy) return null;
   if (!resultado) {
     return (
       <div className="estudio-espera" role="status" aria-busy={busy}>
@@ -86,7 +87,7 @@ export default function PanelResultados({ busy, fase, progreso, transcurrido, re
   return (
     <>
       <div className="estudio-resultado-titulo">
-        <h2>Resultado del análisis</h2>
+        <h2>{desdeHistorial ? "Del historial" : "Resultado del análisis"}</h2>
         <div className="estudio-acciones">
           <button type="button" onClick={onNuevo} className="estudio-btn">
             <RotateCcw size={15} aria-hidden="true" /> Nuevo análisis
@@ -109,6 +110,8 @@ export default function PanelResultados({ busy, fase, progreso, transcurrido, re
         onSincronizar={onSincronizar}
         tiempoS={tiempoS}
         onBuscar={onBuscar}
+        repertorioIds={repertorioIds}
+        onVerLetra={onVerLetra}
       />
       <p className="estudio-nota is-aviso">{resultado.aviso}</p>
       <Informe resultado={resultado} />

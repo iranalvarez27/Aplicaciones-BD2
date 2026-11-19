@@ -1,5 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { Captions, Disc3, LoaderCircle, Search, Wand2 } from "lucide-react";
+import { Captions, ChevronLeft, ChevronRight, LoaderCircle, Mic, Pause, Play, Search, Wand2 } from "lucide-react";
+import Portada from "./Portada";
+import { tiempo } from "./formato";
+
+export const POR_PAGINA = 10;
 
 function Preparacion({ estado, onPreparar, iniciando }) {
   const prep = estado?.preparacion;
@@ -88,18 +92,30 @@ function Letras({ letras, lista, onPreparar, iniciando, hayCanciones }) {
   );
 }
 
-export default function Repertorio({ canciones, estado, onPreparar, iniciando, error, letras, letrasListas, onPrepararLetras, iniciandoLetras }) {
+export default function Repertorio({ canciones, estado, onPreparar, iniciando, error, letras, letrasListas, onPrepararLetras, iniciandoLetras, seleccionada, sonandoId, onElegir, onAlternar }) {
   const [filtro, setFiltro] = useState("");
-  const grupos = useMemo(() => {
+  const [artista, setArtista] = useState("");
+  const [pagina, setPagina] = useState(1);
+
+  const artistas = useMemo(() => {
+    const cuenta = new Map();
+    for (const c of canciones) cuenta.set(c.artista, (cuenta.get(c.artista) || 0) + 1);
+    return [...cuenta.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([nombre]) => nombre);
+  }, [canciones]);
+
+  const visibles = useMemo(() => {
     const f = filtro.trim().toLowerCase();
-    const mapa = new Map();
-    for (const c of canciones) {
-      if (f && !`${c.titulo} ${c.artista}`.toLowerCase().includes(f)) continue;
-      if (!mapa.has(c.artista)) mapa.set(c.artista, []);
-      mapa.get(c.artista).push(c);
-    }
-    return [...mapa.entries()];
-  }, [canciones, filtro]);
+    return canciones.filter((c) => (!artista || c.artista === artista) && (!f || `${c.titulo} ${c.artista}`.toLowerCase().includes(f)));
+  }, [canciones, filtro, artista]);
+
+  const paginas = Math.max(1, Math.ceil(visibles.length / POR_PAGINA));
+  const actual = Math.min(pagina, paginas);
+  const desde = (actual - 1) * POR_PAGINA;
+  const fila = visibles.slice(desde, desde + POR_PAGINA);
+  const numeros = useMemo(() => {
+    const ini = Math.max(1, Math.min(actual - 2, paginas - 4));
+    return Array.from({ length: Math.min(5, paginas) }, (_, i) => ini + i);
+  }, [actual, paginas]);
   const preparando = estado?.preparacion?.activa;
 
   return (
@@ -114,25 +130,81 @@ export default function Repertorio({ canciones, estado, onPreparar, iniciando, e
               type="search"
               placeholder="Buscar canción o artista"
               value={filtro}
-              onChange={(e) => setFiltro(e.target.value)}
+              onChange={(e) => {
+                setFiltro(e.target.value);
+                setPagina(1);
+              }}
               aria-label="Buscar en el repertorio"
             />
           </label>
-          <div className="repertorio-lista">
-            {grupos.map(([artista, lista]) => (
-              <section key={artista}>
-                <h3>{artista}</h3>
-                <ul>
-                  {lista.map((c) => (
-                    <li key={c.track_id}>
-                      <Disc3 size={13} aria-hidden="true" /> {c.titulo}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-            {!grupos.length && <p className="estudio-vacio">Ninguna canción coincide con «{filtro}».</p>}
-          </div>
+          {artistas.length > 1 && (
+            <div className="repertorio-chips" role="group" aria-label="Filtrar por artista">
+              {["", ...artistas].map((nombre) => (
+                <button key={nombre || "todas"} type="button" className={artista === nombre ? "is-activo" : ""} aria-pressed={artista === nombre} onClick={() => {
+                    setArtista(nombre);
+                    setPagina(1);
+                  }}>
+                  {nombre || "Todas"}
+                </button>
+              ))}
+            </div>
+          )}
+          {visibles.length > 0 && (
+            <div className="repertorio-cabecera" aria-hidden="true">
+              <span>#</span>
+              <span>Título</span>
+              <span>Duración</span>
+              <span />
+            </div>
+          )}
+          <ul className="repertorio-lista">
+            {fila.map((c, i) => {
+              const elegida = seleccionada === c.track_id;
+              const sonando = sonandoId === c.track_id;
+              return (
+                <li key={c.track_id} className={(elegida ? "is-elegida" : "") + (sonando ? " is-sonando" : "")}>
+                  <div className="cancion-fila">
+                    <button type="button" className="cancion-num" onClick={() => onAlternar?.(c)} aria-pressed={sonando} aria-label={`${sonando ? "Pausar" : "Escuchar"} ${c.titulo}`} title={sonando ? "Pausar" : "Escuchar"}>
+                      <span className="num">{sonando ? "♪" : elegida ? "●" : desde + i + 1}</span>
+                      {sonando ? <Pause size={14} className="play" aria-hidden="true" /> : <Play size={14} className="play" aria-hidden="true" />}
+                    </button>
+                    <button type="button" className="cancion-main" onClick={() => onElegir?.(c)} aria-pressed={elegida} title="Ver la letra y cantarla">
+                      <span className="cancion-datos">
+                        <Portada titulo={c.titulo} artista={c.artista} />
+                        <span className="cancion-texto">
+                          <strong>{c.titulo}</strong>
+                          <small>{c.artista}</small>
+                        </span>
+                      </span>
+                      <span className="cancion-dur mono">{c.duracion_s ? tiempo(c.duracion_s) : "—"}</span>
+                      <Mic size={15} className="cancion-mic" aria-hidden="true" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          {!visibles.length && <p className="estudio-vacio">Ninguna canción coincide con «{filtro}».</p>}
+          {visibles.length > POR_PAGINA && (
+            <nav className="paginado" aria-label="Páginas del repertorio">
+              <span className="estudio-nota">
+                {desde + 1}–{Math.min(desde + POR_PAGINA, visibles.length)} de {visibles.length}
+              </span>
+              <div>
+                <button type="button" onClick={() => setPagina(actual - 1)} disabled={actual === 1} aria-label="Página anterior">
+                  <ChevronLeft size={16} />
+                </button>
+                {numeros.map((n) => (
+                  <button key={n} type="button" className={n === actual ? "is-activo" : ""} aria-current={n === actual ? "page" : undefined} onClick={() => setPagina(n)}>
+                    {n}
+                  </button>
+                ))}
+                <button type="button" onClick={() => setPagina(actual + 1)} disabled={actual === paginas} aria-label="Página siguiente">
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </nav>
+          )}
         </>
       ) : (
         !error && <Preparacion estado={estado} onPreparar={onPreparar} iniciando={iniciando} />

@@ -11,8 +11,8 @@ const BARRAS = [
 export default function LogoEstudio({ size = 52 }) {
   return (
     <svg className="logo-svg" width={size} height={size} viewBox="0 0 52 52" aria-hidden="true">
-      <circle cx="26" cy="26" r="19.5" fill="none" stroke="#e5302a" strokeWidth="3" />
-      <circle cx="26" cy="26" r="14.5" fill="none" stroke="#e5302a" strokeWidth="1" opacity=".4" />
+      <circle cx="26" cy="26" r="19.5" fill="none" stroke="#ffffff" strokeWidth="3" />
+      <circle cx="26" cy="26" r="14.5" fill="none" stroke="#ffffff" strokeWidth="1" opacity=".4" />
       {BARRAS.map((b, i) => (
         <rect
           key={b.x}

@@ -9,8 +9,8 @@ function escribirWav(muestras, sr) {
   texto(8, "WAVE");
   texto(12, "fmt ");
   v.setUint32(16, 16, true);
-  v.setUint16(20, 1, true); // PCM
-  v.setUint16(22, 1, true); // mono
+  v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true);
   v.setUint32(24, sr, true);
   v.setUint32(28, sr * 2, true);
   v.setUint16(32, 2, true);
@@ -29,7 +29,7 @@ export async function blobAWav(blob) {
   const ctx = new Contexto();
   try {
     const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
-    const offline = new OfflineAudioContext(1, Math.ceil(audio.duration * SR), SR); // mono + remuestreo
+    const offline = new OfflineAudioContext(1, Math.ceil(audio.duration * SR), SR);
     const fuente = offline.createBufferSource();
     fuente.buffer = audio;
     fuente.connect(offline.destination);
@@ -45,7 +45,6 @@ export async function iniciarGrabacion() {
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined")
     throw new Error("este navegador no permite grabar audio (usa Chrome, Edge o Firefox en http://localhost)");
   const stream = await navigator.mediaDevices.getUserMedia({
-    // Sin cancelación de eco ni supresión de ruido: alteran la voz cantada.
     audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: true },
   });
   const Contexto = window.AudioContext || window.webkitAudioContext;

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Disc3, History, LoaderCircle, Mic, RefreshCw, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { Compass, Disc3, History, LoaderCircle, Mic, MicVocal, RefreshCw, Search, SlidersHorizontal, Upload, X } from "lucide-react";
 import {
   detectarCopyright,
   estadoLetras,
@@ -18,6 +18,8 @@ import { picosDeAudio } from "./audio/onda";
 import FuenteAudio from "./audio/FuenteAudio";
 import LogoEstudio from "./audio/LogoEstudio";
 import Grabadora from "./audio/Grabadora";
+import Explorar from "./audio/Explorar";
+import Karaoke from "./audio/Karaoke";
 import PanelResultados from "./audio/PanelResultados";
 import ParametrosCopyright from "./audio/ParametrosCopyright";
 import Repertorio from "./audio/Repertorio";
@@ -76,6 +78,12 @@ export default function AudioCopyrightPanel() {
   const [tiempoS, setTiempoS] = useState(0);
   const [historial, setHistorial] = useState(leerHistorial);
   const [desdeHistorial, setDesdeHistorial] = useState("");
+  const [cancion, setCancion] = useState(null);
+  const [karaokeAbierto, setKaraokeAbierto] = useState(true);
+  const [vista, setVista] = useState("explorar");
+  const [ordenPlay, setOrdenPlay] = useState(0);
+  const [sonandoId, setSonandoId] = useState(null);
+  const [ordenPausa, setOrdenPausa] = useState(0);
   const ondaToken = useRef(0);
   const cabecera = useRef(null);
   const fragmento = useRef(null);
@@ -179,6 +187,7 @@ export default function AudioCopyrightPanel() {
   };
 
   const seleccionar = (archivo) => {
+    setVista("analizar");
     limpiarResultado();
     setSubida(null);
     setDuracion(null);
@@ -247,6 +256,7 @@ export default function AudioCopyrightPanel() {
     }
     setTranscurrido(0);
     setBusy(true);
+    setVista("resultado");
     setError("");
     limpiarResultado();
     try {
@@ -260,11 +270,18 @@ export default function AudioCopyrightPanel() {
       setEstado("Buscando la grabación y la letra cantada…");
       const nuevo = await detectarCopyright(archivo.path, n, params, progresoId.current);
       setResultado(nuevo);
+      const mejor = nuevo.coincidencias.reduce((a, b) => (!a || b.porcentaje_similitud > a.porcentaje_similitud ? b : a), null);
+      const delRepertorio = mejor && repertorio.find((c) => c.track_id === mejor.track_id);
+      if (delRepertorio) {
+        setCancion(delRepertorio);
+        setKaraokeAbierto(true);
+      }
       setHistorial(guardarAnalisis(file.name, nuevo));
       setEstado("Análisis completado");
     } catch (err) {
       setError(err.message);
       setEstado("");
+      setVista("analizar");
     } finally {
       setBusy(false);
       setFase("");
@@ -279,6 +296,7 @@ export default function AudioCopyrightPanel() {
   };
   const abrirDelHistorial = (item) => {
     seleccionar(null);
+    setVista("resultado");
     setResultado(item.resultado);
     setDesdeHistorial(item.fecha);
     setVentana(null);
@@ -317,15 +335,42 @@ export default function AudioCopyrightPanel() {
     seleccionar(null);
     panel.current?.scrollTo?.({ top: 0, behavior: "smooth" });
   };
+  const cantar = () => {
+    setVista("analizar");
+    cambiarFuente("grabar");
+    panel.current?.querySelector(".is-cabina")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+  const alternarCancion = (c) => {
+    if (cancion?.track_id === c.track_id && sonandoId === c.track_id) {
+      setOrdenPausa((n) => n + 1);
+      return;
+    }
+    setCancion(c);
+    setKaraokeAbierto(true);
+    setOrdenPlay((n) => n + 1);
+  };
+  const verLetraDe = (trackId) => {
+    const encontrada = repertorio.find((c) => c.track_id === trackId);
+    if (!encontrada) return;
+    setCancion(encontrada);
+    setKaraokeAbierto(true);
+    panel.current?.scrollTo?.({ top: 0, behavior: "smooth" });
+  };
   const recargar = () => {
     setCargando(true);
     cargar();
   };
 
+  useEffect(() => {
+    panel.current?.scrollTo?.({ top: 0 });
+  }, [vista]);
+
   const bloqueado = busy || grabando;
   const puedeAnalizar = !!file && !cargando && !bloqueado && !!n;
   const motivo = !file ? (fuente === "grabar" ? "Graba una toma" : "Sube un audio") : !n ? "No hay biblioteca disponible" : "";
   const letrasListas = !!letras?.tabla_lista;
+  const panelDerecho = karaokeAbierto && !(vista !== "analizar" && !cancion);
+  const repertorioIds = useMemo(() => new Set(repertorio.map((c) => c.track_id)), [repertorio]);
   const opciones = ventana === "opciones";
   const tramos = useMemo(() => {
     if (!resultado || desdeHistorial) return [];
@@ -347,7 +392,7 @@ export default function AudioCopyrightPanel() {
           </span>
           <div>
             <span className="estudio-eyebrow">
-              <i aria-hidden="true" /> {grabando ? "Grabando en cabina" : "Estudio de grabación"}
+              <i aria-hidden="true" /> {grabando ? "Grabando en cabina" : "Copyright · Karaoke"}
             </span>
             <strong>Detección de copyright</strong>
             <span>Encuentra la grabación original o una canción del repertorio cantada por ti</span>
@@ -360,6 +405,7 @@ export default function AudioCopyrightPanel() {
             onClick={() => setVentana(opciones ? null : "opciones")}
             aria-expanded={opciones}
             aria-controls="opciones-avanzadas"
+            title="Opciones avanzadas"
           >
             <SlidersHorizontal size={15} aria-hidden="true" /> Opciones avanzadas
           </button>
@@ -369,6 +415,7 @@ export default function AudioCopyrightPanel() {
             onClick={() => setVentana(ventana === "historial" ? null : "historial")}
             aria-expanded={ventana === "historial"}
             aria-controls="historial-analisis"
+            title="Historial de análisis"
           >
             <History size={15} aria-hidden="true" /> Historial
             {historial.length > 0 && <span className="estudio-chip">{historial.length}</span>}
@@ -421,9 +468,52 @@ export default function AudioCopyrightPanel() {
         </div>
       )}
 
-      <div className="estudio-layout">
+      <div className="vistas" role="tablist" aria-label="Pantallas">
+        <button type="button" role="tab" aria-selected={vista === "explorar"} className={vista === "explorar" ? "is-activa" : ""} onClick={() => setVista("explorar")}>
+          <Compass size={15} aria-hidden="true" /> Explorar
+        </button>
+        <button type="button" role="tab" aria-selected={vista === "analizar"} className={vista === "analizar" ? "is-activa" : ""} onClick={() => setVista("analizar")}>
+          <Search size={15} aria-hidden="true" /> Analizar
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={vista === "resultado"}
+          className={vista === "resultado" ? "is-activa" : ""}
+          onClick={() => setVista("resultado")}
+          disabled={!resultado && !busy}
+          title={!resultado && !busy ? "Aparece cuando analices un audio" : undefined}
+        >
+          {busy ? <LoaderCircle size={15} className="motion-safe:animate-spin" aria-hidden="true" /> : <Disc3 size={15} aria-hidden="true" />} Resultado
+          {busy ? " · analizando…" : resultado ? <span className="estudio-chip">{resultado.coincidencias.length}</span> : null}
+        </button>
+        <button
+          type="button"
+          className={"vistas-karaoke" + (karaokeAbierto ? " is-activa" : "")}
+          onClick={() => setKaraokeAbierto((v) => !v)}
+          aria-pressed={karaokeAbierto}
+          title={karaokeAbierto ? "Ocultar el panel de letra" : "Mostrar el panel de letra"}
+        >
+          <MicVocal size={15} aria-hidden="true" /> Letra
+        </button>
+      </div>
+
+      <div className={"estudio-layout" + (panelDerecho ? "" : " sin-karaoke")}>
+        <div className={"estudio-col" + (vista !== "explorar" ? " is-oculta" : "")}>
+          <Explorar
+            canciones={repertorio}
+            seleccionada={cancion?.track_id}
+            sonandoId={sonandoId}
+            onAlternar={alternarCancion}
+          />
+        </div>
+        <div className={"estudio-col" + (vista !== "analizar" ? " is-oculta" : "")}>
         <form onSubmit={analizar} className="estudio-una">
           <section className="estudio-card is-cabina" aria-label="Tu audio">
+            <div className="cabina-titulo">
+              <h2>Tu audio</h2>
+              <p>Sube una canción o canta directo con el micrófono.</p>
+            </div>
             <div className="fuente-selector" role="group" aria-label="Cómo cargar el audio">
               {FUENTES.map(({ clave, icono: IconoFuente, texto }) => (
                 <button
@@ -488,11 +578,18 @@ export default function AudioCopyrightPanel() {
               letrasListas={letrasListas}
               onPrepararLetras={prepararLetrasServidor}
               iniciandoLetras={iniciandoLetras}
+              seleccionada={cancion?.track_id}
+              sonandoId={sonandoId}
+              onAlternar={alternarCancion}
+              onElegir={(c) => {
+                setCancion(c);
+                setKaraokeAbierto(true);
+              }}
             />
           </section>
         </div>
-      </div>
-
+        </div>
+        <div className={"estudio-col" + (vista !== "resultado" ? " is-oculta" : "")}>
       <PanelResultados
         busy={busy}
         fase={fase}
@@ -507,7 +604,14 @@ export default function AudioCopyrightPanel() {
         onSincronizar={sincronizar}
         onNuevo={nuevoAnalisis}
         onExportar={descargar}
+        repertorioIds={repertorioIds}
+        onVerLetra={verLetraDe}
       />
+        </div>
+        <div className={panelDerecho ? "karaoke-celda" : "is-oculta"}>
+          <Karaoke cancion={cancion} grabando={grabando} onCantar={cantar} onCerrar={() => setKaraokeAbierto(false)} orden={ordenPlay} ordenPausa={ordenPausa} onSonando={setSonandoId} />
+        </div>
+      </div>
     </div>
   );
 }

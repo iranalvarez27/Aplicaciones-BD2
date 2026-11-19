@@ -23,6 +23,8 @@ from multimedia import colecciones_audio
 from multimedia.colecciones_audio import normalizar_ruta, ruta_local
 from multimedia.mfcc import cargar_audio
 
+from .extras import agregar_extras
+
 
 class DetectionRequest(BaseModel):
     path: str
@@ -207,4 +209,5 @@ def crear_router(conexion, root):
 
     agregar_acapella(router, root, ENGINE_HOME)
     agregar_letras(router, root, conexion)
+    agregar_extras(router)
     return router

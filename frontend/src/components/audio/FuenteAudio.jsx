@@ -1,7 +1,24 @@
 import React, { useState } from "react";
-import { Download, Trash2, Upload } from "lucide-react";
+import { Download, Music, Pause, Play, Trash2, Upload } from "lucide-react";
 import OndaAudio from "./OndaAudio";
 import { tiempo } from "./formato";
+
+function Tile({ sonando }) {
+  return (
+    <span className={"fuente-tile" + (sonando ? " is-sonando" : "")} aria-hidden="true">
+      {sonando ? (
+        <span className="eq">
+          <i />
+          <i />
+          <i />
+          <i />
+        </span>
+      ) : (
+        <Music size={30} />
+      )}
+    </span>
+  );
+}
 
 export default function FuenteAudio({
   file,
@@ -24,6 +41,12 @@ export default function FuenteAudio({
   onDuracion,
 }) {
   const [sonando, setSonando] = useState(false);
+  const alternar = () => {
+    const a = playerRef?.current;
+    if (!a) return;
+    if (a.paused) a.play().catch(() => {});
+    else a.pause();
+  };
   const grabada = file?.name?.startsWith("toma-");
   const [minimo, maximo] = limites;
   const fueraDeRango = duracion != null && (duracion < minimo || duracion > maximo);
@@ -41,7 +64,13 @@ export default function FuenteAudio({
           }}
           className={"fuente-drop" + (file ? " has-file" : "") + (bloqueada ? " is-busy" : "") + (compacta ? " is-compact" : "")}
         >
-          {file ? <i className={"disco-vinilo" + (sonando ? " is-sonando" : "")} aria-hidden="true" /> : <Upload size={22} aria-hidden="true" />}
+          {file ? (
+            <Tile sonando={sonando} />
+          ) : (
+            <span className="fuente-tile is-subir" aria-hidden="true">
+              <Upload size={compacta ? 22 : 30} />
+            </span>
+          )}
           <span>
             <strong title={file?.name}>{file?.name || (compacta ? "…o sube una toma grabada" : "Suelta aquí tu audio")}</strong>
             <small>
@@ -50,6 +79,7 @@ export default function FuenteAudio({
                 : "MP3 · WAV · FLAC · OGG · M4A · máx. 50 MB"}
             </small>
           </span>
+          {!file && !compacta && <span className="fuente-elegir">Elegir archivo</span>}
           <input
             type="file"
             accept=".mp3,.wav,.ogg,.flac,.m4a"
@@ -67,7 +97,7 @@ export default function FuenteAudio({
         <>
           {sinZona && file && (
             <div className="toma-disco">
-              <i className={"disco-vinilo is-mini" + (sonando ? " is-sonando" : "")} aria-hidden="true" />
+              <Tile sonando={sonando} />
               <span>
                 <strong title={file.name}>{file.name}</strong>
                 <small>
@@ -81,7 +111,6 @@ export default function FuenteAudio({
             key={preview}
             ref={playerRef}
             src={preview}
-            controls
             preload="metadata"
             onPlay={(e) => {
               setSonando(true);
@@ -100,6 +129,14 @@ export default function FuenteAudio({
             className="fuente-player"
             aria-label="Escuchar tu audio"
           />
+          <div className="fuente-controles">
+            <button type="button" className="fuente-play" onClick={alternar} aria-label={sonando ? "Pausar tu audio" : "Reproducir tu audio"} aria-pressed={sonando}>
+              {sonando ? <Pause size={22} fill="currentColor" /> : <Play size={22} fill="currentColor" />}
+            </button>
+            <span className="fuente-tiempo mono">
+              {tiempo(posicion || 0)} / {duracion != null ? tiempo(duracion) : "--:--"}
+            </span>
+          </div>
           {fueraDeRango && (
             <p className="estudio-aviso" role="status">
               Esta toma dura {tiempo(duracion)}; para este modo debe durar entre {tiempo(minimo)} y {tiempo(maximo)}.
