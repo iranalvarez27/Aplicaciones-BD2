@@ -5,6 +5,8 @@ import { ArrowLeft, ShoppingCart, Search, SlidersHorizontal, X, MapPin, RefreshC
 import StoresPage from './ecommerce/StoresPage';
 import ProductRail from './ecommerce/ProductRail';
 import PhotoSearch from './ecommerce/PhotoSearch';
+import HeroShowcase from './ecommerce/HeroShowcase';
+import ScrollTour from './ecommerce/ScrollTour';
 import { fetchEcommerceStatus, fetchEcommerceCatalog, fetchEcommerceBestSellers, fetchEcommerceProductStores, fetchEcommerceProduct, fetchEcommerceRecommendations,
   recordEcommerceInteraction, purchaseEcommerceCart, SinConexionError, PHOTO_EXTENSIONS } from '../utils/api';
 import ProductCard, { money } from './ecommerce/ProductCard';
@@ -23,6 +25,12 @@ const LOCATIONS = [
   { name: 'Denver, CO', coords: [39.7392, -104.9903] },
 ];
 const LOCATION_KEY = 'bd2_ecommerce_ubicacion';
+const recomendacionesGuardadas = new Map();
+const guardarRecomendacion = (key, rec) => {
+  recomendacionesGuardadas.delete(key);
+  recomendacionesGuardadas.set(key, rec);
+  if (recomendacionesGuardadas.size > 40) recomendacionesGuardadas.delete(recomendacionesGuardadas.keys().next().value);
+};
 const CATEGORY_ICONS = {
   Audio: Headphones, Cameras: Camera, Components: Cpu, 'Laptops & Computers': Laptop, Monitors: Monitor,
   Networking: Wifi, Peripherals: Keyboard, Smartwatches: Watch, Storage: HardDrive,
@@ -193,11 +201,12 @@ export default function ECommercePanel({ onUseSQL }) {
 
   useEffect(() => {
     if (!selected) return;
-    const controller = new AbortController();
     const key = `${selected}|${location}|${revision}|${JSON.stringify(settings)}`;
+    if (recomendacionesGuardadas.has(key)) return;
+    const controller = new AbortController();
     fetchEcommerceRecommendations({ product_id: selected, k: 10, ...settings,
       lat: LOCATIONS[location].coords[0], lon: LOCATIONS[location].coords[1] }, controller.signal)
-      .then(rec => setRecommendation({ ...rec, key }))
+      .then(rec => { guardarRecomendacion(key, rec); setRecommendation({ ...rec, key }); })
       .catch(e => { if (e.name !== 'AbortError') setError(e.message); });
     return () => controller.abort();
   }, [selected, settings, location, revision]);
@@ -205,7 +214,8 @@ export default function ECommercePanel({ onUseSQL }) {
   const currentDetail = detail?.key === detailKey ? detail : null;
   const product = currentDetail?.producto || null;
   const productStores = currentDetail?.tiendas || [];
-  const currentRecommendation = recommendation?.key === recommendationKey ? recommendation : null;
+  const currentRecommendation = recommendation?.key === recommendationKey ? recommendation
+    : recomendacionesGuardadas.has(recommendationKey) ? { ...recomendacionesGuardadas.get(recommendationKey), desdeMemoria: true } : null;
 
   function choosePhoto(e) {
     const file = e.target.files?.[0];
@@ -225,6 +235,7 @@ export default function ECommercePanel({ onUseSQL }) {
 
   function selectProduct(id) {
     setView(v => (v === 'foto' ? 'foto' : 'tienda'));
+    setRecommendation(null);
     setSelected(id);
     setMessage('');
     recordEcommerceInteraction({ usuario_id: user, producto_id: id, tipo: 'vista' }).catch(e => setError(e.message));
@@ -284,7 +295,7 @@ export default function ECommercePanel({ onUseSQL }) {
         </button>
         <button className={`shop-cart-button ${cartOpen ? 'is-open' : ''}`} onClick={() => setCartOpen(v => !v)}>
           <ShoppingCart size={20} aria-hidden="true" /><span>Carrito</span>
-          <b aria-label="productos en el carrito">{cart.reduce((n, p) => n + p.cantidad, 0)}</b>
+          <b key={cart.reduce((n, p) => n + p.cantidad, 0)} className="shop-cart-count" aria-label="productos en el carrito">{cart.reduce((n, p) => n + p.cantidad, 0)}</b>
         </button>
       </header>
       {status?.listo && !!catalog?.categorias?.length && <nav className="shop-categories" aria-label="Categorías">
@@ -293,7 +304,7 @@ export default function ECommercePanel({ onUseSQL }) {
       </nav>}
     </div>
     {error && <div className="shop-error" role="alert">{error}<button aria-label="Cerrar error" onClick={() => setError('')}><X size={16} /></button></div>}
-    {message && <div className="shop-success" role="status">{message}</div>}
+    {message && <div className="shop-success" role="status" key={message}>{message}</div>}
     {offline && <div className="shop-state" role="alert">
       <span className="shop-state-icon"><WifiOff size={26} /></span>
       <h2>No se pudo conectar con el motor de la tienda</h2>
@@ -321,19 +332,16 @@ export default function ECommercePanel({ onUseSQL }) {
     {status?.listo && view === 'foto' && photo && !selected && <PhotoSearch key={photo.preview} foto={photo} onSelect={selectProduct} onUseSQL={onUseSQL} onError={setError} />}
     {status?.listo && view === 'tiendas' &&<StoresPage key={location} ubicacion={LOCATIONS[location]} onUseSQL={onUseSQL} onError={setError} />}
     {status?.listo && view === 'tienda' && !selected && !isListing && <>
+      <HeroShowcase productos={status.productos} ubicacion={LOCATIONS[location].name} onSelect={selectProduct}
+        onBrowse={() => document.getElementById('shop-catalogo')?.scrollIntoView({ behavior: 'smooth' })}
+        onStores={openStores} onError={setError} />
       <section className="shop-hero">
-        <div>
-          <h1>Encuentra la tecnología que necesitas</h1>
-          <p className="shop-hero-lead">Laptops, audio, cámaras, almacenamiento y más, con reseñas y compras reales de Amazon. Compra en línea y retira en una tienda cerca de {LOCATIONS[location].name}.</p>
-          <div className="shop-hero-actions">
-            <button className="shop-primary" onClick={() => document.getElementById('shop-catalogo')?.scrollIntoView({ behavior: 'smooth' })}>Ver productos</button>
-            <span className="shop-hero-count"><strong>{status.productos.toLocaleString('es')}</strong> productos disponibles</span>
-          </div>
-        </div>
         <aside className="shop-signals" aria-label="Cómo se eligen las recomendaciones">
-          <h2>Recomendaciones con cuatro señales</h2>
-          <p>Cada ficha mezcla estas señales y te muestra cuánto pesó cada una.</p>
-          <div className="shop-signal-band" aria-hidden="true" />
+          <div>
+            <h2>Recomendaciones con cuatro señales</h2>
+            <p>Cada ficha mezcla estas señales y te muestra cuánto pesó cada una.</p>
+            <div className="shop-signal-band" aria-hidden="true" />
+          </div>
           <ul>
             {SIGNALS.map(({ key, label, detail, Icon }) => <li key={key}>
               <span className={`shop-signal-${key}`}><Icon size={17} aria-hidden="true" /></span>
@@ -350,6 +358,7 @@ export default function ECommercePanel({ onUseSQL }) {
         })}</div>
       </section>}
       {bestSellersSection}
+      <ScrollTour ubicacion={LOCATIONS[location]} onPhoto={() => photoInput.current?.click()} onError={setError} />
       <div className="shop-section-title" id="shop-catalogo"><h2>Explora el catálogo</h2><span>Ordenado por código de producto</span></div>
     </>}
     {status?.listo && view === 'tienda' && !selected && isListing && <>
@@ -375,6 +384,7 @@ export default function ECommercePanel({ onUseSQL }) {
     </>}
     {status?.listo && view === 'tienda' && !selected && <>
       <div className="shop-grid" aria-busy={loadingCatalog}>{catalog?.productos.map(p => <ProductCard key={p.id} producto={p} onSelect={selectProduct} />)}</div>
+      {loadingCatalog && !catalog?.productos.length && <div className="shop-skeleton-row is-grid" aria-hidden="true">{Array.from({ length: 10 }, (_, i) => <div key={i} className="shop-skeleton-card"><i /><b /><b /><em /></div>)}</div>}
       {loadingCatalog && <p className="shop-empty" role="status">Cargando productos…</p>}
       {!loadingCatalog && catalog?.productos.length === 0 && <p className="shop-empty">No hay productos con estos filtros.</p>}
       {catalog?.busqueda_acotada && <p className="shop-empty">Mostrando los primeros 500 resultados. Puedes precisar la búsqueda.</p>}
@@ -385,7 +395,9 @@ export default function ECommercePanel({ onUseSQL }) {
     </>}
     {(view === 'tienda' || view === 'foto') && selected && <>
       <button className="shop-back" onClick={() => setSelected(null)}><ArrowLeft size={16} /> {view === 'foto' ? 'Volver a los resultados de tu foto' : 'Volver al catálogo'}</button>
-      {!product && <p className="shop-empty" role="status">Cargando el producto y su disponibilidad…</p>}
+      {!product && <section className="shop-detail shop-skeleton-detail" role="status" aria-label="Cargando el producto y su disponibilidad">
+        <i /><div><b /><b /><em /><em /><span /></div>
+      </section>}
       {product && <>
         <section className="shop-detail">
           <div className="shop-detail-image"><img src={product.media_url} alt={product.nombre} /></div>
@@ -408,9 +420,15 @@ export default function ECommercePanel({ onUseSQL }) {
             <button className="shop-primary" disabled={Object.values(draftSettings.pesos).every(v => v === 0)}>Aplicar</button>
           </div>
         </form></details>
-        {!currentRecommendation && <p className="shop-empty" role="status">Calculando recomendaciones con las cuatro señales…</p>}
+        {!currentRecommendation && <section className="shop-loading" role="status">
+          <div className="shop-section-title"><h2>También puede interesarte</h2><span className="shop-loading-text">El motor está combinando las cuatro señales…</span></div>
+          <div className="shop-signal-band is-loading" aria-hidden="true" />
+          <div className="shop-skeleton-row" aria-hidden="true">{Array.from({ length: 5 }, (_, i) => <div key={i} className="shop-skeleton-card"><i /><b /><b /><em /></div>)}</div>
+        </section>}
         {currentRecommendation && <>
-          <div className="shop-section-title"><h2>También puede interesarte</h2><span title="tiempo_total_ms que devuelve el motor">Calculado por el motor en {Math.round(currentRecommendation.tiempo_total_ms).toLocaleString('es')} ms</span></div>
+          <div className="shop-section-title"><h2>También puede interesarte</h2><span title="tiempo_total_ms que devuelve el motor">
+            {currentRecommendation.desdeMemoria ? 'Guardado de tu visita anterior · el motor tardó ' : 'Calculado por el motor en '}
+            {Math.round(currentRecommendation.tiempo_total_ms).toLocaleString('es')} ms</span></div>
           <div className="shop-legend">{Object.entries(LABELS).map(([m, label]) => <span key={m}><i className={`shop-signal-${m}`} />{label}</span>)}</div>
           {Object.entries(currentRecommendation.errores_modalidades).map(([m, detail]) => <p className="shop-error" key={m}>{LABELS[m]} no disponible. {detail}</p>)}
           {!!currentRecommendation.recomendaciones.length && <ProductRail label="También puede interesarte">{currentRecommendation.recomendaciones.map(p => <ProductCard key={p.id} producto={p} onSelect={selectProduct} />)}</ProductRail>}

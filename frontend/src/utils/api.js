@@ -101,7 +101,17 @@ export async function searchSimilarPhoto(path, { k = 12, metodo = 'HNSW' } = {})
   return data;
 }
 
-export const fetchEcommerceStatus =signal => ecommerceRequest('/status', { signal });
+const RUTA_CATALOGO = /^bench\/data\/amazon_img\/imgs\/[A-Za-z0-9]+\.jpg$/;
+
+export async function searchSimilarToCatalogPhoto(ruta, k = 4) {
+  if (!RUTA_CATALOGO.test(ruta)) throw new Error('Foto del catálogo inválida');
+  const sql = `SELECT id, SIMILARITY_SCORE() AS score FROM ecommerce_imagenes_hnsw WHERE SIMILAR_TO('${ruta}', k=${Number(k)}) USING HNSW WITH METRIC=cosine`;
+  const data = await engineRequest('/api/query', { query: sql });
+  if (data.status !== 'success') throw new Error(data.error || 'La búsqueda por foto falló');
+  return data;
+}
+
+export const fetchEcommerceStatus = signal => ecommerceRequest('/status', { signal });
 export const fetchEcommerceCatalog = (params, signal) => ecommerceRequest(`/catalog?${new URLSearchParams(params)}`, { signal });
 export const fetchEcommerceProduct = (id, signal) => ecommerceRequest(`/products/${id}`, { signal });
 export const fetchEcommerceRecommendations = (body, signal) => ecommerceRequest('/recommend', { body, signal });
