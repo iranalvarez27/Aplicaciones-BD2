@@ -12,7 +12,7 @@ import { fetchEcommerceStatus, fetchEcommerceCatalog, fetchEcommerceBestSellers,
 import ProductCard, { money } from './ecommerce/ProductCard';
 import StoreMap from './ecommerce/StoreMap';
 import './ecommerce/shop.css';
-import logo from '../assets/tecno-store-logo.png';
+import logo from '../assets/lacachina-logo.png';
 
 const LOCATIONS = [
   { name: 'New York, NY', coords: [40.7128, -74.0060] },
@@ -271,8 +271,7 @@ export default function ECommercePanel({ onUseSQL }) {
     <div className="shop-top">
       <header className="shop-header">
         <button className="shop-brand" onClick={goHome} aria-label="Ir al inicio de la tienda">
-          <img className="shop-brand-mark" src={logo} alt="" />
-          <span><strong>Tecno Store</strong><small>Electrónica con recomendaciones inteligentes</small></span>
+          <img className="shop-brand-mark" src={logo} alt="LaCachina Tecnología" />
         </button>
         <form className="shop-header-search" role="search" onSubmit={submitSearch}>
           <Search size={18} aria-hidden="true" />

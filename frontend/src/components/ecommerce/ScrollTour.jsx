@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Search, Camera, MapPin } from 'lucide-react';
 import { fetchEcommerceCatalog, fetchEcommerceRecommendations, fetchEcommerceNearbyStores, fetchEcommerceProduct, searchSimilarToCatalogPhoto } from '../../utils/api';
 import { money } from './ProductCard';
-import logo from '../../assets/tecno-store-logo.png';
+import logo from '../../assets/lacachina-logo.png';
 
 const CONSULTA = 'wireless headphones';
 const PRODUCTO_BASE = 4;
@@ -27,7 +27,7 @@ async function cargarTour(coords) {
 
 function Pantalla({ paso, datos, ciudad }) {
   if (!datos) return <div className="shop-tour-screen">
-    <div className="shop-screen-bar"><img src={logo} alt="" /><b>Tecno Store</b></div>
+    <div className="shop-screen-bar"><img src={logo} alt="LaCachina" /></div>
     <div className="shop-tour-body" role="status" aria-label="Consultando al motor">
       <div className="shop-skeleton-row is-tour" aria-hidden="true">{Array.from({ length: 4 }, (_, i) => <div key={i} className="shop-skeleton-card"><i /><b /><em /></div>)}</div>
       <small className="shop-tour-foot">Consultando al motor…</small>
@@ -35,7 +35,7 @@ function Pantalla({ paso, datos, ciudad }) {
   </div>;
   const { busqueda, recomendacion, tiendas, base, foto } = datos;
   return <div className="shop-tour-screen" key={paso}>
-    <div className="shop-screen-bar"><img src={logo} alt="" /><b>Tecno Store</b>
+    <div className="shop-screen-bar"><img src={logo} alt="LaCachina" />
       <i>{['Búsqueda', 'Recomendaciones', 'Tiendas', 'Búsqueda por foto'][paso]}</i></div>
     {paso === 0 && <div className="shop-tour-body">
       <div className="shop-tour-query"><Search size={13} aria-hidden="true" /> {CONSULTA}</div>
@@ -116,7 +116,7 @@ export default function ScrollTour({ ubicacion, onPhoto, onError }) {
   ];
   const datosActuales = datos?.ciudad === ubicacion.name ? datos : null;
 
-  return <section className="shop-tour" ref={seccion} aria-label="Cómo funciona Tecno Store">
+  return <section className="shop-tour" ref={seccion} aria-label="Cómo funciona LaCachina">
     <div className="shop-tour-steps">
       {textos.map((t, i) => <article key={t.titulo} ref={el => { pasos.current[i] = el; }} data-paso={i} className={`shop-tour-step ${paso === i ? 'is-active' : ''}`}>
         <h2>{t.titulo}</h2>

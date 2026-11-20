@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Star, MapPin } from 'lucide-react';
 import { fetchEcommerceBestSellers } from '../../utils/api';
 import { money } from './ProductCard';
-import logo from '../../assets/tecno-store-logo.png';
+import logo from '../../assets/lacachina-logo.png';
 
 const DESTACADAS = ['Audio', 'Laptops & Computers', 'Monitors', 'Cameras', 'Smartwatches'];
 
@@ -38,7 +38,7 @@ export default function HeroShowcase({ productos, ubicacion, onSelect, onBrowse,
           <button className="shop-laptop-screen" onClick={() => producto && onSelect(producto.id)} disabled={!producto}
             aria-label={producto ? `Ver ${producto.nombre}` : 'Cargando producto destacado'}>
             <span className="shop-screen-bar">
-              <img src={logo} alt="" /><b>Tecno Store</b><i>{categoria}</i>
+              <img src={logo} alt="LaCachina" /><i>{categoria}</i>
             </span>
             {producto ? <span className="shop-screen-page" key={producto.id}>
               <span className="shop-screen-photo"><img src={producto.media_url} alt="" /></span>

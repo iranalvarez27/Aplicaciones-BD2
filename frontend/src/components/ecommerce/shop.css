@@ -23,9 +23,7 @@
 .shop-top::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; background: var(--signal-gradient); }
 .shop-header { min-height: 74px; display: flex; align-items: center; gap: 20px; }
 .shop-brand { display: flex; align-items: center; gap: 11px; background: none; border: 0; padding: 0; color: inherit; text-align: left; }
-.shop-brand-mark { width: 46px; height: 46px; object-fit: contain; flex: none; }
-.shop-brand strong { display: block; font-family: var(--font-display); font-size: 19px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; }
-.shop-brand small { display: block; color: var(--ink-soft); font-size: 11.5px; margin-top: 2px; white-space: nowrap; }
+.shop-brand-mark { height: 50px; width: auto; display: block; flex: none; }
 .shop-header-search { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 220px; max-width: 700px; margin: 0 auto; padding-left: 16px; background: var(--paper); border: 1.5px solid var(--line); border-radius: 999px; color: var(--ink-soft); transition: border-color .2s, box-shadow .2s, background .2s; }
 .shop-header-search:focus-within { border-color: var(--cobalt); background: var(--card); box-shadow: 0 0 0 4px #3157f61f; }
 .shop .shop-header-search input { flex: 1; min-width: 0; background: transparent; border: 0; padding: 12px 4px; font-size: 14px; outline: none; }
@@ -68,7 +66,7 @@
 .shop .shop-laptop-screen { display: grid; grid-template-rows: auto 1fr; width: 100%; aspect-ratio: 16 / 10; padding: 0; border: 0; border-radius: 8px; overflow: hidden; background: #f6f7fc; color: #101a3a; text-align: left; cursor: pointer; }
 .shop .shop-laptop-screen:disabled { cursor: default; }
 .shop-screen-bar { display: flex; align-items: center; gap: 7px; padding: 7px 12px; background: #fff; border-bottom: 1px solid #e3e7f3; font-size: 11px; }
-.shop-screen-bar img { width: 18px; height: 18px; object-fit: contain; }
+.shop-screen-bar img { height: 20px; width: auto; }
 .shop-screen-bar b { font-family: var(--font-display); font-size: 11.5px; }
 .shop-screen-bar i { margin-left: auto; font-style: normal; padding: 3px 9px; border-radius: 999px; background: #f6f7fc; border: 1px solid #e3e7f3; color: #5b6688; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
 .shop-screen-page { display: grid; grid-template-columns: 46% 1fr; gap: 14px; padding: 14px; min-height: 0; animation: shop-screen-in .35s ease-out; }
@@ -341,7 +339,6 @@
   .shop-top { margin: 0 -16px 16px; padding: 0 16px; }
   .shop-header { flex-wrap: wrap; gap: 12px; padding: 12px 0; }
   .shop-header-search { order: 5; flex-basis: 100%; max-width: none; }
-  .shop-brand small { display: none; }
   .shop-location { margin-left: auto; }
   .shop-showcase { grid-template-columns: 1fr; padding: 34px 22px 28px; gap: 30px; }
   .shop-laptop { transform: none; }
